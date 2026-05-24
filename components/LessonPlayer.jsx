@@ -20,7 +20,12 @@ const LessonPlayer = ({
   isReviewMode = false,
 }) => {
   const handleLessonComplete = useCallback(
-    async ({ earnedReward, correctAnswers, totalQuestions }) => {
+    async ({
+      earnedReward,
+      correctAnswers,
+      totalQuestions,
+      answerDetails,
+    }) => {
       if (isReviewMode) {
         return {
           rewarded: false,
@@ -28,6 +33,14 @@ const LessonPlayer = ({
           reason: "Review mode only.",
           xpReward: 0,
           goldReward: 0,
+          correctAnswers,
+          wrongAnswers: Math.max(totalQuestions - correctAnswers, 0),
+          totalQuestions,
+          percentage:
+            totalQuestions > 0
+              ? Math.round((correctAnswers / totalQuestions) * 100)
+              : 0,
+          answerDetails: answerDetails || [],
         };
       }
 
@@ -36,6 +49,7 @@ const LessonPlayer = ({
         earnedReward,
         correctAnswers,
         totalQuestions,
+        answerDetails,
       });
     },
     [lesson, isReviewMode]
@@ -45,14 +59,22 @@ const LessonPlayer = ({
     currentStep,
     currentStepIndex,
     totalSteps,
+
     selectedAnswer,
     earnedReward,
     completionResult,
+
+    correctAnswers,
+    totalQuestions,
+    answerDetails,
+
     showSummary,
     wizardModal,
+
     progress,
     canGoNext,
     isLastStep,
+
     goToNextStep,
     handleAnswer,
     closeWizardModal,
@@ -73,7 +95,10 @@ const LessonPlayer = ({
   return (
     <LessonScreenWrapper>
       <View style={styles.container}>
-        <LessonHeader title={lesson.title} xp={displayReward.xp} />
+        <LessonHeader
+          title={lesson?.title || "Lesson"}
+          xp={displayReward.xp}
+        />
 
         {!showSummary && (
           <LessonProgress
@@ -93,6 +118,16 @@ const LessonPlayer = ({
               lesson={lesson}
               earnedReward={displayReward}
               alreadyCompleted={alreadyCompleted}
+              completionResult={completionResult}
+              correctAnswers={
+                completionResult?.correctAnswers ?? correctAnswers
+              }
+              totalQuestions={
+                completionResult?.totalQuestions ?? totalQuestions
+              }
+              answerDetails={
+                completionResult?.answerDetails ?? answerDetails
+              }
             />
           ) : (
             <LessonStepCard

@@ -18,7 +18,12 @@ const QUESTION_REWARD = {
 };
 
 const getLessonSteps = (lesson) => {
-  return lesson?.interactiveSteps || lesson?.steps || [];
+  return (
+    lesson?.interactiveSteps ||
+    lesson?.aiLesson?.interactiveSteps ||
+    lesson?.steps ||
+    []
+  );
 };
 
 const getIntroMessage = (lesson) => {
@@ -49,6 +54,30 @@ const buildCorrectMessage = ({ step, rewardEnabled }) => {
   }
 
   return `${message}\n\n+${QUESTION_REWARD.xp} XP  +${QUESTION_REWARD.gold} Gold`;
+};
+
+const buildAnswerDetails = ({ steps, selectedAnswers }) => {
+  return steps
+    .map((step, stepIndex) => {
+      if (step?.type !== "ask") return null;
+
+      const selectedAnswer = selectedAnswers[stepIndex] || "";
+
+      if (!selectedAnswer) return null;
+
+      const correctAnswer = step.answer || "";
+      const isCorrect = selectedAnswer === correctAnswer;
+
+      return {
+        stepIndex,
+        question: step.question || "",
+        selectedAnswer,
+        correctAnswer,
+        isCorrect,
+        result: isCorrect ? "correct" : "wrong",
+      };
+    })
+    .filter(Boolean);
 };
 
 export const useLessonFlow = (lesson, options = {}) => {
@@ -95,6 +124,13 @@ export const useLessonFlow = (lesson, options = {}) => {
       return total;
     }, 0);
   }, [selectedAnswers, steps]);
+
+  const answerDetails = useMemo(() => {
+    return buildAnswerDetails({
+      steps,
+      selectedAnswers,
+    });
+  }, [steps, selectedAnswers]);
 
   const progress = useMemo(() => {
     if (!totalSteps) return 0;
@@ -155,6 +191,7 @@ export const useLessonFlow = (lesson, options = {}) => {
         earnedReward: rewardEnabled ? earnedReward : { xp: 0, gold: 0 },
         correctAnswers,
         totalQuestions,
+        answerDetails,
       });
     } catch (error) {
       console.log("Lesson completion error:", error);
@@ -167,6 +204,7 @@ export const useLessonFlow = (lesson, options = {}) => {
     earnedReward,
     correctAnswers,
     totalQuestions,
+    answerDetails,
     onLessonComplete,
     rewardEnabled,
   ]);
@@ -276,6 +314,7 @@ export const useLessonFlow = (lesson, options = {}) => {
     completionResult,
     correctAnswers,
     totalQuestions,
+    answerDetails,
 
     showSummary,
     wizardModal,

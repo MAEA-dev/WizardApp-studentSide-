@@ -45,6 +45,25 @@ const getNumber = (value, fallback = 0) => {
   return Number.isFinite(numberValue) ? numberValue : fallback;
 };
 
+const cleanAnswerDetails = (answerDetails = []) => {
+  if (!Array.isArray(answerDetails)) return [];
+
+  return answerDetails.map((item) => {
+    const isCorrect = item?.isCorrect === true;
+
+    return {
+      stepIndex: getNumber(item?.stepIndex),
+
+      question: String(item?.question || ""),
+      selectedAnswer: String(item?.selectedAnswer || ""),
+      correctAnswer: String(item?.correctAnswer || ""),
+
+      isCorrect,
+      result: isCorrect ? "correct" : "wrong",
+    };
+  });
+};
+
 export const getTodayKey = () => {
   const date = new Date();
 
@@ -121,12 +140,18 @@ const buildCompletedLessonData = ({
   earnedReward,
   correctAnswers,
   totalQuestions,
+  answerDetails = [],
   dailyXp,
   dailyGold,
   dailyRewardClaimed,
 }) => {
   const safeCorrectAnswers = getNumber(correctAnswers);
   const safeTotalQuestions = getNumber(totalQuestions);
+
+  const safeWrongAnswers = Math.max(
+    safeTotalQuestions - safeCorrectAnswers,
+    0
+  );
 
   const percentage =
     safeTotalQuestions > 0
@@ -140,8 +165,11 @@ const buildCompletedLessonData = ({
     subjectId: getLessonSubjectId(lesson),
 
     correctAnswers: safeCorrectAnswers,
+    wrongAnswers: safeWrongAnswers,
     totalQuestions: safeTotalQuestions,
     percentage,
+
+    answerDetails: cleanAnswerDetails(answerDetails),
 
     xpEarned: getNumber(earnedReward?.xp),
     goldEarned: getNumber(earnedReward?.gold),
@@ -172,6 +200,7 @@ export const completeLessonAndReward = async ({
   earnedReward,
   correctAnswers,
   totalQuestions,
+  answerDetails = [],
 }) => {
   if (!lesson?.id) {
     throw new Error("Missing lesson id.");
@@ -256,6 +285,7 @@ export const completeLessonAndReward = async ({
       earnedReward,
       correctAnswers,
       totalQuestions,
+      answerDetails,
       dailyXp,
       dailyGold,
       dailyRewardClaimed: isFirstLessonToday,
@@ -316,6 +346,21 @@ export const completeLessonAndReward = async ({
       leveledUp: nextProgress.leveledUp,
       levelsGained: nextProgress.levelsGained,
       statPointsGained: nextProgress.statPointsGained,
+
+      correctAnswers: getNumber(correctAnswers),
+      wrongAnswers: Math.max(
+        getNumber(totalQuestions) - getNumber(correctAnswers),
+        0
+      ),
+      totalQuestions: getNumber(totalQuestions),
+      percentage:
+        getNumber(totalQuestions) > 0
+          ? Math.round(
+              (getNumber(correctAnswers) / getNumber(totalQuestions)) * 100
+            )
+          : 0,
+
+      answerDetails: cleanAnswerDetails(answerDetails),
 
       student: updatedStudent,
     };

@@ -7,26 +7,19 @@ import {
 } from "firebase/auth";
 
 import {
-  collection,
-  query,
-  where,
-  getDocs,
+  doc,
+  getDoc,
 } from "firebase/firestore";
 
 import {
   httpsCallable,
 } from "firebase/functions";
 
-
-
 const createUserFn = httpsCallable(functions, "createUser");
-
-
 
 export const createUser = async (data) => {
   try {
     const response = await createUserFn(data);
-
     return response.data;
   } catch (error) {
     console.log("Create user error:", error);
@@ -34,97 +27,99 @@ export const createUser = async (data) => {
   }
 };
 
-
-
 export const loginUsername = async ({
   username,
   password,
 }) => {
   try {
-    const cleanUsername = username
+    const cleanUsername = String(username || "")
       .trim()
       .toLowerCase();
 
-    const q = query(
-      collection(db, "users"),
-      where("username", "==", cleanUsername)
-    );
-
-    const snapshot = await getDocs(q);
-
-    if (snapshot.empty) {
-      const error = new Error(
-        "Username not found"
-      );
-
-      error.code = "username/not-found";
-
+    if (!cleanUsername) {
+      const error = new Error("Username is required.");
+      error.code = "username/empty";
       throw error;
     }
 
-    const userData = snapshot.docs[0].data();
+    if (!password) {
+      const error = new Error("Password is required.");
+      error.code = "password/empty";
+      throw error;
+    }
 
-    const email = userData.email;
+    const usernameRef = doc(db, "usernames", cleanUsername);
+    const usernameSnap = await getDoc(usernameRef);
 
-    const userCredential =
-      await signInWithEmailAndPassword(
-        auth,
-        email,
-        password
-      );
+    if (!usernameSnap.exists()) {
+      const error = new Error("Username not found.");
+      error.code = "username/not-found";
+      throw error;
+    }
+
+    const usernameData = usernameSnap.data();
+    const email = usernameData?.email;
+
+    if (!email) {
+      const error = new Error("Account email not found.");
+      error.code = "username/email-missing";
+      throw error;
+    }
+
+    const userCredential = await signInWithEmailAndPassword(
+      auth,
+      email,
+      password
+    );
 
     return userCredential.user;
-
   } catch (error) {
     console.log("Login error:", error);
     throw error;
   }
 };
 
-
-
 export const logoutUser = async () => {
   try {
     await signOut(auth);
-
     return true;
-
   } catch (error) {
     console.log("Logout error:", error);
     return false;
   }
 };
 
-
-
-
-export const watchStudentAuthState = (callback) => {
+export const watchCurrentUserUid = (callback) => {
   return onAuthStateChanged(auth, (user) => {
-    callback(user);
+    callback(user ? user.uid : null);
   });
-};
-
-export const getCurrentStudent = () => {
-  return auth.currentUser || null;
 };
 
 export const getCurrentUserUid = () => {
   return auth.currentUser?.uid || null;
 };
 
+export const getCurrentUser = () => {
+  return auth.currentUser || null;
+};
 
-
-export const getAuthErrorMessage = (
-  error
-) => {
+export const getAuthErrorMessage = (error) => {
   switch (error.code) {
+    case "username/empty":
+      return "Please enter your username.";
+
+    case "password/empty":
+      return "Please enter your password.";
 
     case "username/not-found":
       return "No account with this username.";
 
+    case "username/email-missing":
+      return "This username is missing login information.";
+
     case "auth/wrong-password":
     case "auth/invalid-credential":
-      return "Incorrect password.";
+      return "Incorrect username or password.";
 
     case "auth/network-request-failed":
       return "Check your internet connection.";

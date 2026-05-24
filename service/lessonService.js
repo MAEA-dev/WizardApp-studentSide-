@@ -17,24 +17,33 @@ const SUBJECT_COLORS = [
   "#FF6B9A",
 ];
 
+const DEFAULT_LESSON_REWARD = {
+  xp: 0,
+  gold: 0,
+};
+
 const emptyUnsubscribe = () => {};
 
+const cleanText = (value) => {
+  return String(value || "").trim();
+};
+
 const getSubjectName = (subject) => {
-  return subject.subjectName || subject.name || subject.title || "Subject";
+  return subject?.subjectName || subject?.name || subject?.title || "Subject";
 };
 
 const getLessonTitle = (lesson) => {
-  return lesson.displayTitle || lesson.title || "Untitled Lesson";
+  return lesson?.displayTitle || lesson?.title || "Untitled Lesson";
 };
 
 const getLessonDescription = (lesson) => {
-  if (lesson.description) return lesson.description;
+  if (lesson?.description) return lesson.description;
 
-  if (lesson.aiLesson?.introMessage) {
+  if (lesson?.aiLesson?.introMessage) {
     return lesson.aiLesson.introMessage;
   }
 
-  if (Array.isArray(lesson.aiLesson?.summary)) {
+  if (Array.isArray(lesson?.aiLesson?.summary)) {
     return lesson.aiLesson.summary.join(" ");
   }
 
@@ -43,18 +52,19 @@ const getLessonDescription = (lesson) => {
 
 const getLessonReward = (lesson) => {
   return {
-    xp: lesson.aiLesson?.reward?.xp || lesson.reward?.xp || lesson.xp || 0,
-    gold:
-      lesson.aiLesson?.reward?.gold || lesson.reward?.gold || lesson.gold || 0,
+    xp: Number(lesson?.reward?.xp || lesson?.xp || DEFAULT_LESSON_REWARD.xp),
+    gold: Number(
+      lesson?.reward?.gold || lesson?.gold || DEFAULT_LESSON_REWARD.gold
+    ),
   };
 };
 
 const getLessonSteps = (lesson) => {
-  return lesson.aiLesson?.interactiveSteps || lesson.interactiveSteps || [];
+  return lesson?.aiLesson?.interactiveSteps || lesson?.interactiveSteps || [];
 };
 
 const getLessonSummary = (lesson) => {
-  return lesson.aiLesson?.summary || lesson.summary || [];
+  return lesson?.aiLesson?.summary || lesson?.summary || [];
 };
 
 const formatLesson = ({ lessonDoc, subjectName }) => {
@@ -76,9 +86,9 @@ const formatLesson = ({ lessonDoc, subjectName }) => {
     completed: false,
     completedData: null,
 
-    subjectId: lesson.subjectId,
+    subjectId: lesson.subjectId || "",
     subjectName: lesson.subjectName || subjectName,
-    gradeLevel: lesson.gradeLevel,
+    gradeLevel: lesson.gradeLevel || "",
 
     introMessage: lesson.aiLesson?.introMessage || "",
     finalMessage: lesson.aiLesson?.finalMessage || "",
@@ -86,14 +96,15 @@ const formatLesson = ({ lessonDoc, subjectName }) => {
     summary: getLessonSummary(lesson),
 
     aiLesson: lesson.aiLesson || null,
-    aiStatus: lesson.aiStatus || null,
+    aiStatus: lesson.aiStatus || "",
+
+    status: lesson.status || "published",
+    isPublished: lesson.isPublished === true,
 
     createdAt: lesson.createdAt || null,
     updatedAt: lesson.updatedAt || null,
 
     raw: lesson,
-
-    ...lesson,
   };
 };
 
@@ -129,12 +140,12 @@ export const listenSubjectsByGradeLevel = ({
   onSuccess = () => {},
   onError = () => {},
 }) => {
-  if (!gradeLevel) {
+  const normalizedGradeLevel = cleanText(gradeLevel);
+
+  if (!normalizedGradeLevel) {
     onError(new Error("Missing grade level."));
     return emptyUnsubscribe;
   }
-
-  const normalizedGradeLevel = String(gradeLevel);
 
   const subjectsQuery = query(
     collection(db, "subjects"),
@@ -147,7 +158,7 @@ export const listenSubjectsByGradeLevel = ({
   const lessonUnsubscribers = [];
 
   const clearLessonListeners = () => {
-    lessonUnsubscribers.forEach((unsubscribe) => unsubscribe());
+    lessonUnsubscribers.forEach((unsubscribe) => unsubscribe?.());
     lessonUnsubscribers.length = 0;
   };
 
@@ -162,10 +173,14 @@ export const listenSubjectsByGradeLevel = ({
 
   const unsubscribeCompletedLessons = listenCompletedLessons({
     onSuccess: (completedMap) => {
-      completedLessonsMap = completedMap;
+      completedLessonsMap = completedMap || {};
       emitSubjects();
     },
-    onError,
+
+    onError: (error) => {
+      console.log("Listen completed lessons error:", error);
+      onError(error);
+    },
   });
 
   const unsubscribeSubjects = onSnapshot(
@@ -189,7 +204,7 @@ export const listenSubjectsByGradeLevel = ({
           color:
             subject.color || SUBJECT_COLORS[index % SUBJECT_COLORS.length],
 
-          gradeLevel: subject.gradeLevel,
+          gradeLevel: subject.gradeLevel || normalizedGradeLevel,
           lessonCount: 0,
           completedLessons: 0,
           lessons: [],
@@ -205,15 +220,16 @@ export const listenSubjectsByGradeLevel = ({
 
         if (!currentSubject) return;
 
-        const lessonsQuery = query(
+        const publishedLessonsQuery = query(
           collection(db, "lessons"),
           where("subjectId", "==", subjectDoc.id),
           where("gradeLevel", "==", normalizedGradeLevel),
-          where("aiStatus", "==", "done")
+          where("aiStatus", "==", "done"),
+          where("isPublished", "==", true)
         );
 
         const unsubscribeLessons = onSnapshot(
-          lessonsQuery,
+          publishedLessonsQuery,
           (lessonsSnapshot) => {
             const lessons = lessonsSnapshot.docs.map((lessonDoc) =>
               formatLesson({
@@ -230,8 +246,9 @@ export const listenSubjectsByGradeLevel = ({
 
             emitSubjects();
           },
+
           (error) => {
-            console.log("Listen lessons error:", error);
+            console.log("Listen published lessons error:", error);
             onError(error);
           }
         );
@@ -239,6 +256,7 @@ export const listenSubjectsByGradeLevel = ({
         lessonUnsubscribers.push(unsubscribeLessons);
       });
     },
+
     (error) => {
       console.log("Listen subjects error:", error);
       onError(error);
@@ -246,8 +264,8 @@ export const listenSubjectsByGradeLevel = ({
   );
 
   return () => {
-    unsubscribeSubjects();
-    unsubscribeCompletedLessons();
+    unsubscribeSubjects?.();
+    unsubscribeCompletedLessons?.();
     clearLessonListeners();
   };
 };
@@ -257,12 +275,14 @@ export const listenLessonById = ({
   onSuccess = () => {},
   onError = () => {},
 }) => {
-  if (!lessonId) {
+  const cleanLessonId = cleanText(lessonId);
+
+  if (!cleanLessonId) {
     onError(new Error("Missing lesson id."));
     return emptyUnsubscribe;
   }
 
-  const lessonRef = doc(db, "lessons", String(lessonId));
+  const lessonRef = doc(db, "lessons", cleanLessonId);
 
   return onSnapshot(
     lessonRef,
@@ -273,36 +293,20 @@ export const listenLessonById = ({
       }
 
       const lesson = lessonSnapshot.data();
-      const reward = getLessonReward(lesson);
 
-      onSuccess({
-        id: lessonSnapshot.id,
+      if (lesson.isPublished !== true) {
+        onError(new Error("This lesson is not available yet."));
+        return;
+      }
 
-        title: getLessonTitle(lesson),
-        description: getLessonDescription(lesson),
-
-        reward,
-        xp: reward.xp,
-        gold: reward.gold,
-
-        subjectId: lesson.subjectId || null,
+      const formattedLesson = formatLesson({
+        lessonDoc: lessonSnapshot,
         subjectName: lesson.subjectName || "",
-        gradeLevel: lesson.gradeLevel || "",
-
-        introMessage: lesson.aiLesson?.introMessage || "",
-        finalMessage: lesson.aiLesson?.finalMessage || "",
-        interactiveSteps: getLessonSteps(lesson),
-        summary: getLessonSummary(lesson),
-
-        aiLesson: lesson.aiLesson || null,
-        aiStatus: lesson.aiStatus || "",
-
-        createdAt: lesson.createdAt || null,
-        updatedAt: lesson.updatedAt || null,
-
-        raw: lesson,
       });
+
+      onSuccess(formattedLesson);
     },
+
     (error) => {
       console.log("Listen lesson by id error:", error);
       onError(error);
